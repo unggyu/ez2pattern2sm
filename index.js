@@ -339,28 +339,29 @@ const SMWriter = {
   }
 };
 
-const title = process.argv[2];
-if (!title) {
-  console.log('title is required.');
-  return;
-}
-const pattern = process.argv[3];
-if (!pattern) {
-  console.log('pattern is required.')
-  return;
-}
+(async () => {
+  const title = process.argv[2];
+  if (!title) {
+    console.log('title is required.');
+    return;
+  }
+  const pattern = process.argv[3];
+  if (!pattern) {
+    console.log('pattern is required.')
+    return;
+  }
 
-const smFilePath = SMWriter.getExportPath(title);
-if (fs.existsSync(smFilePath)) {
-  console.log(`SM file already exists in path '${smFilePath}'`);
-  // 파일이 이미 존재하므로 작업을 종료함
-  return;
-}
+  const smFilePath = SMWriter.getExportPath(title);
+  if (fs.existsSync(smFilePath)) {
+    console.log(`SM file already exists in path '${smFilePath}'`);
+    // 파일이 이미 존재하므로 작업을 종료함
+    return;
+  }
 
-// 평면 채보 파싱
-Ez2PatternParser.parseAsync('djmax', 4, title, pattern).then(({ metadata, measures }) => {
+  // 평면 채보 파싱
+  const { metadata, measures } = await Ez2PatternParser.parseAsync('djmax', 4, title, pattern);
   // SM 파일로 내보냄
   SMWriter.write(metadata, measures);
 
   console.log(`Exported to '${smFilePath}'`);
-});
+})();
