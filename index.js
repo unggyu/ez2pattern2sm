@@ -339,8 +339,16 @@ const SMWriter = {
   }
 };
 
-const title = 'DIE IN';
-const pattern = 'SC';
+const title = process.argv[2];
+if (!title) {
+  console.log('title is required.');
+  return;
+}
+const pattern = process.argv[3];
+if (!pattern) {
+  console.log('pattern is required.')
+  return;
+}
 
 const smFilePath = SMWriter.getExportPath(title);
 if (fs.existsSync(smFilePath)) {
