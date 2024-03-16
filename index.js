@@ -231,7 +231,7 @@ const SMWriter = {
     const smMeasures = this.measures2SmMeasures(measures);
     const bpmBars = this.getBpmBarsFromMeasures(measures);
     const smFilePath = this.getExportPath(metadata.title);
-    const bgName = path.basename(metadata.bgPath);
+    const bgName = metadata.bgPath ? path.basename(metadata.bgPath) : undefined;
 
     // .sm 포멧으로 작성
     const wstream = fs.createWriteStream(smFilePath);
@@ -244,8 +244,8 @@ const SMWriter = {
   #GENRE:;
   #CREDIT:;
   #MUSIC:${metadata.title}.mp3;
-  #BANNER:${bgName};
-  #BACKGROUND:${bgName};
+  #BANNER:${bgName ?? ''};
+  #BACKGROUND:${bgName ?? ''};
   #CDTITLE:;
   #SAMPLESTART:0.000;
   #SAMPLELENGTH:0.000;
