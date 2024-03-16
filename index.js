@@ -15,7 +15,6 @@ const DjmaxInfoDownloader = {
    * @returns 
    */
   downloadBackgroundImageAsync: async function (title, folderPath) {
-    // https://d2l1b145ht03q6.cloudfront.net/djmax/song_pic/%21%21New+Game+Start%21%21_2.png
     const imgUrl = `https://d2l1b145ht03q6.cloudfront.net/djmax/song_pic/${title}_2.png`;
     const downloadPath = path.join(folderPath, `${title}.png`);
     await this.downloadImageAsync(imgUrl, downloadPath);
