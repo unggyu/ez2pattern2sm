@@ -5,9 +5,55 @@ const path = require('path');
 
 const gcd = (a, b) => a ? gcd(b % a, a) : b; // 최대공약수
 const lcm = (a, b) => a * b / gcd(a, b); // 최소공배수
-const getExportFolderPath = (title) => path.join(__dirname, 'exports', title);
 
-const DjmaxInfoDownloader = {
+const Utils = {
+  /**
+   * 인수 제공
+   * @returns 
+   */
+  getArgs: function () {
+    const game = 'djmax';
+    const key = 4;
+    const title = process.argv[2];
+    if (!title) {
+      throw new Error('title is required.')
+    }
+    const pattern = process.argv[3];
+    if (!pattern) {
+      throw new Error('pattern is required.');
+    }
+
+    return {
+      game,
+      key,
+      title,
+      pattern
+    }
+  },
+
+  /**
+   * 내보내기 폴더 경로 제공
+   * @param {string} title 
+   * @returns 
+   */
+  getExportFolderPath: function (title) {
+    return path.join(__dirname, 'exports', title);
+  },
+
+  /**
+   * 내보내기 폴더가 없는 경우 생성
+   * @param {string} title
+   */
+  ensureExportFolder: function (title) {
+    const exportFolderPath = this.getExportFolderPath(title);
+    if (!fs.existsSync(exportFolderPath)) {
+      // 내보낼 폴더가 없을 경우 생성해줌
+      fs.mkdirSync(exportFolderPath, { recursive: true });
+    }
+  }
+};
+
+const SongDownloader = {
   /**
    * 제목에 해당하는 곡 배경 다운로드
    * @param {string} title 
@@ -294,21 +340,12 @@ const SMWriter = {
   },
 
   /**
-   * SM 파일이 이미 존재하는지 여부 제공
-   * @param {string} title 
-   * @returns 
-   */
-  isSmFileExists: function (title) {
-    return fs.existsSync(this.getExportPath(title));
-  },
-
-  /**
    * 내보내기 경로를 제공
    * @param {string} title 
    * @returns 
    */
   getExportPath: function (title) {
-    return path.join(getExportFolderPath(title), `${title}.sm`);
+    return path.join(Utils.getExportFolderPath(title), `${title}.sm`);
   },
 
   /**
@@ -366,35 +403,25 @@ const SMWriter = {
 };
 
 (async () => {
-  const title = process.argv[2];
-  if (!title) {
-    console.log('title is required.');
-    return;
-  }
-  const pattern = process.argv[3];
-  if (!pattern) {
-    console.log('pattern is required.')
-    return;
-  }
+  const {
+    game,
+    key,
+    title,
+    pattern
+  } = Utils.getArgs();
 
   const smFilePath = SMWriter.getExportPath(title);
   if (fs.existsSync(smFilePath)) {
-    console.log(`SM file already exists in path '${smFilePath}'`);
     // 파일이 이미 존재하므로 작업을 종료함
-    return;
+    throw new Error(`SM file already exists in path '${smFilePath}'`);
   }
 
-  // 내보내기 폴더 생성
-  const exportFolderPath = getExportFolderPath(title);
-  if (!fs.existsSync(exportFolderPath)) {
-    // 내보낼 폴더가 없을 경우 생성해줌
-    fs.mkdirSync(exportFolderPath, { recursive: true });
-  }
+  Utils.ensureExportFolder(title);
 
   // 평면 채보 파싱
-  const { metadata, measures } = await Ez2PatternParser.parseAsync('djmax', 4, title, pattern);
+  const { metadata, measures } = await Ez2PatternParser.parseAsync(game, key, title, pattern);
   // 배경 이미지를 다운로드함
-  metadata.bgPath = await DjmaxInfoDownloader.downloadBackgroundImageAsync(title, getExportFolderPath(title));
+  metadata.bgPath = await SongDownloader.downloadBackgroundImageAsync(title, getExportFolderPath(title));
   // SM 파일로 내보냄
   SMWriter.write(metadata, measures);
 
