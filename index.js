@@ -5,6 +5,38 @@ const path = require('path');
 
 const gcd = (a, b) => a ? gcd(b % a, a) : b; // 최대공약수
 const lcm = (a, b) => a * b / gcd(a, b); // 최소공배수
+const getExportFolderPath = (title) => path.join(__dirname, 'exports', title);
+
+const DjmaxInfoDownloader = {
+  /**
+   * 제목에 해당하는 곡 배경 다운로드
+   * @param {string} title 
+   * @param {string} folderPath
+   * @returns 
+   */
+  downloadBackgroundImageAsync: async function (title, folderPath) {
+    // https://d2l1b145ht03q6.cloudfront.net/djmax/song_pic/%21%21New+Game+Start%21%21_2.png
+    const imgUrl = `https://d2l1b145ht03q6.cloudfront.net/djmax/song_pic/${title}_2.png`;
+    const downloadPath = path.join(folderPath, `${title}.png`);
+    await this.downloadImageAsync(imgUrl, downloadPath);
+
+    return downloadPath;
+  },
+
+  /**
+   * 이미지 다운로드
+   * @param {string} url 
+   * @param {string} downloadPath
+   */
+  downloadImageAsync: async function (url, downloadPath) {
+    try {
+      const response = await axios.get(url, { responseType: 'arraybuffer' });
+      fs.writeFileSync(downloadPath, response.data);
+    } catch (error) {
+      console.error('Error downloading image: ', error);
+    }
+  }
+};
 
 const Ez2PatternParser = {
   /**
@@ -199,13 +231,8 @@ const SMWriter = {
   write: function (metadata, measures) {
     const smMeasures = this.measures2SmMeasures(measures);
     const bpmBars = this.getBpmBarsFromMeasures(measures);
-
     const smFilePath = this.getExportPath(metadata.title);
-    const exportSmFolderPath = path.dirname(smFilePath);
-    if (!fs.existsSync(exportSmFolderPath)) {
-      // 내보내는 폴더가 없을 경우 생성해줌
-      fs.mkdirSync(exportSmFolderPath, { recursive: true });
-    }
+    const bgName = path.basename(metadata.bgPath);
 
     // .sm 포멧으로 작성
     const wstream = fs.createWriteStream(smFilePath);
@@ -218,8 +245,8 @@ const SMWriter = {
   #GENRE:;
   #CREDIT:;
   #MUSIC:${metadata.title}.mp3;
-  #BANNER:;
-  #BACKGROUND:;
+  #BANNER:${bgName};
+  #BACKGROUND:${bgName};
   #CDTITLE:;
   #SAMPLESTART:0.000;
   #SAMPLELENGTH:0.000;
@@ -282,7 +309,7 @@ const SMWriter = {
    * @returns 
    */
   getExportPath: function (title) {
-    return path.join(__dirname, 'exports', title, `${title}.sm`);
+    return path.join(getExportFolderPath(title), `${title}.sm`);
   },
 
   /**
@@ -358,8 +385,17 @@ const SMWriter = {
     return;
   }
 
+  // 내보내기 폴더 생성
+  const exportFolderPath = getExportFolderPath(title);
+  if (!fs.existsSync(exportFolderPath)) {
+    // 내보낼 폴더가 없을 경우 생성해줌
+    fs.mkdirSync(exportFolderPath, { recursive: true });
+  }
+
   // 평면 채보 파싱
   const { metadata, measures } = await Ez2PatternParser.parseAsync('djmax', 4, title, pattern);
+  // 배경 이미지를 다운로드함
+  metadata.bgPath = await DjmaxInfoDownloader.downloadBackgroundImageAsync(title, getExportFolderPath(title));
   // SM 파일로 내보냄
   SMWriter.write(metadata, measures);
 
