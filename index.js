@@ -2,6 +2,7 @@ const axios = require('axios');
 const { JSDOM } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 
 const gcd = (a, b) => a ? gcd(b % a, a) : b; // 최대공약수
 const lcm = (a, b) => a * b / gcd(a, b); // 최소공배수
@@ -55,17 +56,95 @@ const Utils = {
 
 const SongDownloader = {
   /**
-   * 제목에 해당하는 곡 배경 다운로드
+   * 제목을 통해 음원 다운로드
+   * @param {'djmax'} game 
    * @param {string} title 
-   * @param {string} folderPath
    * @returns 
    */
-  downloadBackgroundImageAsync: async function (title, folderPath) {
-    const imgUrl = `https://d2l1b145ht03q6.cloudfront.net/djmax/song_pic/${title}_2.png`;
-    const downloadPath = path.join(folderPath, `${title}.png`);
-    await this.downloadImageAsync(imgUrl, downloadPath);
+  downloadSongByTitleAsync: async function (game, title) {
+    const downloadFolderPath = Utils.getExportFolderPath(title);
+    const audioFileName = `${title}.mp3`;
+    const downloadPath = path.join(downloadFolderPath, audioFileName);
+    if (fs.existsSync(downloadPath)) {
+      throw new Error('Already exists song file: ', downloadPath);
+    }
 
-    return downloadPath;
+    const videoId = await this.getDjmaxVideoIdByTitleAsync(title);
+    await this.downloadSongByVideoIdAsync(title, videoId, downloadPath);
+
+    return videoId;
+  },
+
+  /**
+   * 비디오 ID를 통해 음원 다운로드
+   * @param {string} title 
+   * @param {string} videoId 
+   * @param {string} downloadPath 
+   */
+  downloadSongByVideoIdAsync: async function (title, videoId, downloadPath = '') {
+    const videoUrl = `https://youtu.be/${videoId}`;
+    const child = spawn('yt-dlp', ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', downloadPath, videoUrl]);
+    await new Promise(resolve => child.on('close', code => resolve(code)));
+  },
+
+  /**
+   * 제목을 통해 영상의 썸네일을 다운로드하고 비디오 ID를 제공
+   * @param {'djmax'} game 
+   * @param {string} title 
+   * @returns 
+   */
+  downloadVideoThumbnailByTitleAsync: async function (game, title) {
+    const videoId = await this.getDjmaxVideoIdByTitleAsync(title);
+    await this.downloadVideoThumbnailByVideoIdAsync(title, videoId);
+
+    return videoId;
+  },
+
+  /**
+   * 비디오 ID를 통해 썸네일 다운로드
+   * @param {string} title 
+   * @param {string} videoId 
+   */
+  downloadVideoThumbnailByVideoIdAsync: async function (title, videoId) {
+    const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+    const downloadFolderPath = Utils.getExportFolderPath(title);
+    const downloadPath = path.join(downloadFolderPath, `${title}.jpg`);
+    this.downloadImageAsync(thumbnailUrl, downloadPath);
+  },
+
+  /**
+   * 제목에 해당하는 디제이맥스 영상 ID를 제공
+   * @param {string} title 
+   * @returns 
+   */
+  getDjmaxVideoIdByTitleAsync: async function (title) {
+    // 재생목록: DJMAX Respect V All Song (디제이맥스 리스펙트 V 모든 곡)
+    const playlistId = 'PLtYQ7DpMMg-I22iICgrMNC1ln3ZT4FxUj';
+    const playlistUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
+
+    const child = spawn('yt-dlp', ['-j', '--flat-playlist', playlistUrl]);
+    const videoInfos = [];
+    child.stdout.on('data', data => {
+      const videoInfoJson = data.toString();
+      const videoInfo = JSON.parse(videoInfoJson);
+      videoInfos.push(videoInfo);
+    });
+    await new Promise(resolve => child.on('close', code => resolve(code)));
+
+    // 예시1: 
+    const regex = /\[DJMax Respect V\] (?:.*?) - (.*?) \(M\/V 4K 60FPS\)/;
+    const videoInfo = videoInfos.find(videoInfo => {
+      if (title === 'Gloxinia') {
+        // 재생목록에는 Gloxinia곡만 위 정규식 포멧에 부합하지 않음
+        return videoInfo.title === 'Gloxinia by Ruxxi, Milkoi';
+      }
+
+      const match = videoInfo.title.match(regex);
+      return match && match[1] === title;
+    });
+    const videoId = videoInfo.id;
+
+    return videoId;
   },
 
   /**
@@ -416,14 +495,18 @@ const SMWriter = {
     throw new Error(`SM file already exists in path '${smFilePath}'`);
   }
 
+  // 내보내기 폴더가 없는 경우 생성
   Utils.ensureExportFolder(title);
 
-  // 평면 채보 파싱
-  const { metadata, measures } = await Ez2PatternParser.parseAsync(game, key, title, pattern);
-  // 배경 이미지를 다운로드함
-  metadata.bgPath = await SongDownloader.downloadBackgroundImageAsync(title, getExportFolderPath(title));
-  // SM 파일로 내보냄
-  SMWriter.write(metadata, measures);
+  // 음원 및 비디오 썸네일 다운로드
+  console.log('Start downloading song and video thumbnail...');
+  const videoId = await SongDownloader.downloadSongByTitleAsync(game, title);
+  await SongDownloader.downloadVideoThumbnailByVideoIdAsync(title, videoId);
+  console.log('Download completed.');
 
+  // 평면 채보 파싱 및 SM 파일로 내보내기
+  console.log('Start parsing and exporting to SM file...');
+  const { metadata, measures } = await Ez2PatternParser.parseAsync(game, key, title, pattern);
+  SMWriter.write(metadata, measures);
   console.log(`Exported to '${smFilePath}'`);
 })();
