@@ -3,6 +3,7 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const readline = require('readline');
 
 const Utils = {
   /**
@@ -138,12 +139,12 @@ const SongDownloader = {
     const playlistId = 'PLtYQ7DpMMg-I22iICgrMNC1ln3ZT4FxUj';
     const playlistUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
 
-    const child = spawn('yt-dlp', ['-j', '--flat-playlist', playlistUrl]);
     const videoInfos = [];
-    child.stdout.on('data', data => {
-      const videoInfoJson = data.toString();
-      const videoInfo = JSON.parse(videoInfoJson);
-      videoInfos.push(videoInfo);
+    const child = spawn('yt-dlp', ['-j', '--flat-playlist', playlistUrl]);
+    const rl = readline.createInterface({ input: child.stdout });
+    rl.on('line', line => {
+      const { id, title } = JSON.parse(line);
+      videoInfos.push({ id, title });
     });
     await new Promise(resolve => child.on('close', code => resolve(code)));
 
