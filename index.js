@@ -300,7 +300,9 @@ const Ez2PatternParser = {
 
         // 바닥에서부터의 높이를 계산
         const isLongOrSideNote = noteType === this.NOTE_TYPE.LONG || noteType === this.NOTE_TYPE.SIDE;
-        const height = this.SITE_MEASURE_HEIGHT_PX - (styleMarginTop + (isLongOrSideNote ? styleHeight : 0))
+        const adjustedHeight = isLongOrSideNote ? styleHeight : 0;
+        let height = this.SITE_MEASURE_HEIGHT_PX - (styleMarginTop + adjustedHeight);
+        height = parseFloat(height.toFixed(3)); // 부동소수점 오차를 해결하기 위해 소수점 3자리까지 자름
         // 롱노트의 끝 높이 계산
         // 일반노트는 height와 동일
         const endHeight = this.SITE_MEASURE_HEIGHT_PX - styleMarginTop;
