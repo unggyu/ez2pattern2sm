@@ -123,10 +123,22 @@ const SongDownloader = {
    * @param {string} videoId 
    */
   downloadVideoThumbnailByVideoIdAsync: async function (title, videoId) {
-    const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+    const thumbnailUrls = [
+      `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+    ];
     const downloadFolderPath = Utils.getExportFolderPath(title);
     const downloadPath = path.join(downloadFolderPath, `${title}.jpg`);
-    this.downloadImageAsync(thumbnailUrl, downloadPath);
+  
+    for (let url of thumbnailUrls) {
+      try {
+        await this.downloadImageAsync(url, downloadPath);
+        break; // 다운로드에 성공하면 반복문 종료
+      } catch (error) {
+        console.error(`Failed to download from ${url}. Trying next one...`);
+      }
+    }
   },
 
   /**
@@ -170,12 +182,8 @@ const SongDownloader = {
    * @param {string} downloadPath
    */
   downloadImageAsync: async function (url, downloadPath) {
-    try {
-      const response = await axios.get(url, { responseType: 'arraybuffer' });
-      fs.writeFileSync(downloadPath, response.data);
-    } catch (error) {
-      console.error('Error downloading image: ', error);
-    }
+    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    fs.writeFileSync(downloadPath, response.data);
   }
 };
 
