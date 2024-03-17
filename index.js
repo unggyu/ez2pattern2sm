@@ -134,13 +134,13 @@ const SongDownloader = {
     // 예시1: 
     const regex = /\[DJMax Respect V\] (?:.*?) - (.*?) \(M\/V 4K 60FPS\)/;
     const videoInfo = videoInfos.find(videoInfo => {
-      if (title === 'Gloxinia') {
+      if (title.toUpperCase() === 'Gloxinia'.toUpperCase()) {
         // 재생목록에는 Gloxinia곡만 위 정규식 포멧에 부합하지 않음
         return videoInfo.title === 'Gloxinia by Ruxxi, Milkoi';
       }
 
       const match = videoInfo.title.match(regex);
-      return match && match[1] === title;
+      return match && match[1].toUpperCase() === title.toUpperCase();
     });
     const videoId = videoInfo.id;
 
