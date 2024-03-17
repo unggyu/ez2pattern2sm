@@ -4,9 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const gcd = (a, b) => a ? gcd(b % a, a) : b; // 최대공약수
-const lcm = (a, b) => a * b / gcd(a, b); // 최소공배수
-
 const Utils = {
   /**
    * 인수 제공
@@ -51,6 +48,25 @@ const Utils = {
       // 내보낼 폴더가 없을 경우 생성해줌
       fs.mkdirSync(exportFolderPath, { recursive: true });
     }
+  },
+
+  /**
+   * 최대공약수
+   * @param {*} a 
+   * @param {*} b 
+   * @returns 
+   */
+  gcd: function (a, b) {
+    return a ? this.gcd(b % a, a) : b;
+  },
+
+  /**
+   * 최소공배수
+   * @param {*} a 
+   * @param {*} b 
+   */
+  lcm: function (a, b) {
+    return a * b / this.gcd(a, b);
   }
 };
 
@@ -174,6 +190,24 @@ const Ez2PatternParser = {
   SM_BEATS: [4, 8, 12, 16, 20, 24, 32, 48, 64, 96, 192],
 
   /**
+   * 노트 타입
+   */
+  NOTE_TYPE: {
+    NOTE: 'NOTE',
+    LONG: 'LONG',
+    SIDE: 'SIDE',
+    MINE: 'MINE'
+  },
+
+  /**
+   * 사이드 레인과 노트 레인 매핑
+   */
+  SIDE_LANE_2_NOTE_LANE_MAP: {
+    A: [1, 2],
+    B: [3, 4]
+  },
+
+  /**
    * 웹에서 평면채보를 파싱하여 메타데이터와 마디별 채보로 제공
    * @param {'djmax'} game 
    * @param {4} key 
@@ -213,76 +247,123 @@ const Ez2PatternParser = {
         }
       });
 
+      // 노트 파싱
+      const noteElements = [...element.querySelectorAll('div.note')];
+      let notes = noteElements.map(({ outerHTML, className }) => {
+        // style.marginTop이 undefined라서 outerHTML을 통해 style 원시값을 구하여 정규식으로 px값을 파싱
+        const rowStyle = outerHTML.match(rowStyleRegexp)[1];
+        // 12비트 노트 style 예시1: margin-top:calc(220.00000000000114px * var(--note-height) - 4px);
+        // match[0]: calc(220.00000000000114px
+        // match[1]: 220.00000000000114
+        // 롱노트 sytle 예시2: margin-top:calc(0px * var(--note-height));height:calc(240px  * var(--note-height))
+        // matches[0]: margin-top:calc(0px * var(--note-height));height:calc(240px
+        // matches[1]: 0
+        // matches[2]: 240
+        const [styleMarginTop, styleHeight] = rowStyle
+          .match(calcPxRegexp)
+          .slice(1)
+          .map(match => {
+            let px = parseFloat(match);
+            // 부동소수점 오차를 해결하기 위해 소수점 2자리까지 자름
+            // 222.50000000000003 -> 222.50
+            // 170.00000000000057 -> 170.00
+            px = parseFloat(px.toFixed(2));
+
+            return px;
+          });
+
+        // 클래스에 note-A, note-B가 포함되어있으면 사이드노트
+        // 클래스에 long이 포함되어있으면 롱노트
+        const noteType = (className.includes('long note-A') || className.includes('long note-B'))
+          ? this.NOTE_TYPE.SIDE
+          : className.includes('long')
+            ? this.NOTE_TYPE.LONG
+            : this.NOTE_TYPE.NOTE;
+
+        // 바닥에서부터의 높이를 계산
+        const isLongOrSideNote = noteType === this.NOTE_TYPE.LONG || noteType === this.NOTE_TYPE.SIDE;
+        const height = this.SITE_MEASURE_HEIGHT_PX - (styleMarginTop + (isLongOrSideNote ? styleHeight : 0))
+        // 롱노트의 끝 높이 계산
+        // 일반노트는 height와 동일
+        const endHeight = this.SITE_MEASURE_HEIGHT_PX - styleMarginTop;
+        const getBeat = (height) => {
+          // 다음과 같은 px로 딱 나누어 떨어진다면 해당 노트의 박자임
+          // xbit = 240px / x
+          // 4bit = 60px
+          // 8bit = 30px
+          // 12bit = 20px
+          // 16bit = 15px
+          // 20bit = 12px
+          // 24bit = 10px
+          // 32bit = 7.5px
+          // ...
+          const beat = this.SM_BEATS.find(beat => height % (this.SITE_MEASURE_HEIGHT_PX / beat) === 0);
+          if (beat === undefined) {
+            throw new Error(`Cannot extract beat in measure number ${number}`);
+          }
+
+          return beat;
+        }
+        const beat = getBeat(height);
+        const endBeat = getBeat(endHeight);
+        
+        let noteInfo = {
+          // 일반 노트 class 예시: note note-2
+          // 롱 노트 class 예시: note long note-1
+          // 사이드 노트 class 예시: note long note-A
+          lane: className.replace(/note|long|-/g, '').trim(),
+          noteType,
+          beat,
+          endBeat,
+          posFraction: {
+            // 0 ~ 1 사이값으로 노트의 위치를 나타냄
+            start: height / this.SITE_MEASURE_HEIGHT_PX,
+            end: endHeight / this.SITE_MEASURE_HEIGHT_PX
+          }
+        };
+
+        return noteInfo;
+      });
+      
+      // 사이드 노트를 모두 가져온 후 노트 목록에서 사이드 노트를 제거
+      const sideNotes = notes.filter(note => note.noteType === this.NOTE_TYPE.SIDE);
+      notes = notes.filter(note => note.noteType !== this.NOTE_TYPE.SIDE);
+
+      // 사이드 노트를 32비트 지뢰 노트로 변환
+      const sideNotesAsMines = sideNotes.map(sideNote => {
+        const side2MinesBeat = 32;
+        const lcmBeat = [sideNote.beat, sideNote.endBeat, side2MinesBeat].reduce(Utils.lcm.bind(Utils));
+        const lcmFraction = 1 / lcmBeat;
+        const sideLength = Math.round((sideNote.posFraction.end - sideNote.posFraction.start) / lcmFraction);
+        const mineNotePairs = Array.from({ length: sideLength }, (_, idx) => {
+          const posFraction = sideNote.posFraction.start + (lcmFraction * idx);
+          const noteLanes = this.SIDE_LANE_2_NOTE_LANE_MAP[sideNote.lane];
+          const notePair = noteLanes.map(noteLane => {
+            return {
+              lane: noteLane,
+              noteType: this.NOTE_TYPE.MINE,
+              beat: lcmBeat,
+              endBeat: lcmBeat,
+              posFraction: {
+                start: posFraction,
+                end: posFraction
+              }
+            };
+          });
+
+          return notePair;
+        });
+        const mineNotes = mineNotePairs.flat();
+
+        return mineNotes;
+      });
+      const mineNotes = sideNotesAsMines.flat();
+      notes.push(...mineNotes);
+
       return {
         number,
         bpmBars,
-        notes: Array.from(element.querySelectorAll('div.note')).map(({ outerHTML, className }) => {
-          // style.marginTop이 undefined라서 outerHTML을 통해 style 원시값을 구하여 정규식으로 px값을 파싱
-          const rowStyle = outerHTML.match(rowStyleRegexp)[1];
-          // 12비트 노트 style 예시1: margin-top:calc(220.00000000000114px * var(--note-height) - 4px);
-          // match[0]: calc(220.00000000000114px
-          // match[1]: 220.00000000000114
-          // 롱노트 sytle 예시2: margin-top:calc(0px * var(--note-height));height:calc(240px  * var(--note-height))
-          // matches[0]: margin-top:calc(0px * var(--note-height));height:calc(240px
-          // matches[1]: 0
-          // matches[2]: 240
-          const [styleMarginTop, styleHeight] = rowStyle
-            .match(calcPxRegexp)
-            .slice(1)
-            .map(match => {
-              let px = parseFloat(match);
-              // 222.50000000000003 -> 222.50
-              // 170.00000000000057 -> 170.00
-              px = parseFloat(px.toFixed(2));
-
-              return px;
-            });
-
-          const isLong = className.includes('long');
-          // 바닥에서부터의 높이를 계산
-          // 롱노트의 경우엔 롱노트의 길이를 더 빼줌
-          const height = this.SITE_MEASURE_HEIGHT_PX - (styleMarginTop + (isLong ? styleHeight : 0))
-          // 롱노트의 끝 높이 계산
-          // 일반노트는 height와 동일
-          const endHeight = this.SITE_MEASURE_HEIGHT_PX - styleMarginTop;
-          const getBeat = (height) => {
-            // 다음과 같은 px로 딱 나누어 떨어진다면 해당 노트의 박자임
-            // xbit = 240px / x
-            // 4bit = 60px
-            // 8bit = 30px
-            // 12bit = 20px
-            // 16bit = 15px
-            // 20bit = 12px
-            // 24bit = 10px
-            // 32bit = 7.5px
-            // ...
-            const beat = this.SM_BEATS.find(beat => height % (this.SITE_MEASURE_HEIGHT_PX / beat) === 0);
-            if (beat === undefined) {
-              throw new Error(`Cannot extract beat in measure number ${number}`);
-            }
-
-            return beat;
-          }
-          const beat = getBeat(height);
-          const endBeat = getBeat(endHeight);
-          
-          let noteInfo = {
-            // 일반 노트 class 예시: note note-2
-            // 롱 노트 class 예시: note long note-1
-            // 배열에서 사용할 것이므로 -1 해줌
-            lane: parseInt(className.replace(/note|long|-/g, '').trim()) - 1,
-            isLong,
-            beat,
-            endBeat,
-            posFraction: {
-              // 0 ~ 1 사이값으로 노트의 위치를 나타냄
-              start: height / this.SITE_MEASURE_HEIGHT_PX,
-              end: endHeight / this.SITE_MEASURE_HEIGHT_PX
-            }
-          };
-
-          return noteInfo;
-        })
+        notes
       }
     }).sort((a, b) => {
       // 마디 번호가 칼럼별 내림차순이므로 전체 오름차순으로 정렬해준다.
@@ -335,11 +416,26 @@ const Ez2PatternParser = {
 };
 
 const SMWriter = {
+  /**
+   * SM 노트 타입
+   */
   SM_NOTE: {
     VOID: 0,
-    NOTE: 1,
-    NOTE_LONG_START: 2,
-    NOTE_LONG_END: 3
+    STEP: 1,
+    HOLD_START: 2,
+    HOLD_OR_ROLL_END: 3,
+    ROLL_START: 4,
+    MINE: 'M'
+  },
+
+  /**
+   * 입력 노트 타입
+   */
+  INPUT_NOTE_TYPE: {
+    NOTE: 'NOTE',
+    LONG: 'LONG',
+    SIDE: 'SIDE',
+    MINE: 'MINE'
   },
 
   /**
@@ -463,24 +559,31 @@ const SMWriter = {
       let beats = [...notes.map(note => note.beat), ...notes.map(note => note.endBeat)];
       beats = Array.from(new Set(beats));
       // 해당 마디에 존재하는 비트들의 최소공배수를 구함
-      const lcmBeat = beats.reduce(lcm);
+      const lcmBeat = beats.reduce(Utils.lcm.bind(Utils));
       // 최소공배수 * 4 제로필해주고 알맞은 위치에 노트를 채워넣음
       const twoDArray = this.createSmMeasure(lcmBeat);
-      notes.forEach(({ isLong, posFraction, lane, }) => {
+      notes.forEach(({ noteType, posFraction, lane }) => {
+        lane = parseInt(lane) - 1;
         const row = Math.round(lcmBeat * posFraction.start);
-        if (!isLong) {
-          twoDArray[row][lane] = this.SM_NOTE.NOTE;
-        } else {
-          if (unfinishedLongNoteMeasureIdx !== idx - 1) {
-            // 아직 이전 마디의 롱노트가 끝나지도 않았는데 롱노트가 시작하는 것을 방지
-            twoDArray[row][lane] = this.SM_NOTE.NOTE_LONG_START;
-          }
-          const endRow = Math.round(lcmBeat * posFraction.end);
-          if (endRow < lcmBeat) {
-            twoDArray[endRow][lane] = this.SM_NOTE.NOTE_LONG_END;
-          } else {
-            unfinishedLongNoteMeasureIdx = idx;
-          }
+        switch (noteType) {
+          case this.INPUT_NOTE_TYPE.NOTE:
+            twoDArray[row][lane] = this.SM_NOTE.STEP
+            break;
+          case this.INPUT_NOTE_TYPE.MINE:
+            twoDArray[row][lane] = this.SM_NOTE.MINE;
+            break;
+          default:
+            if (unfinishedLongNoteMeasureIdx !== idx - 1) {
+              // 아직 이전 마디의 롱노트가 끝나지도 않았는데 롱노트가 시작하는 것을 방지
+              twoDArray[row][lane] = this.SM_NOTE.HOLD_START;
+            }
+            const endRow = Math.round(lcmBeat * posFraction.end);
+            if (endRow < lcmBeat) {
+              twoDArray[endRow][lane] = this.SM_NOTE.HOLD_OR_ROLL_END;
+            } else {
+              unfinishedLongNoteMeasureIdx = idx;
+            }
+            break;
         }
       });
       
