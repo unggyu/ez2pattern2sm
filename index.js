@@ -305,27 +305,10 @@ const Ez2PatternParser = {
         height = parseFloat(height.toFixed(3)); // 부동소수점 오차를 해결하기 위해 소수점 3자리까지 자름
         // 롱노트의 끝 높이 계산
         // 일반노트는 height와 동일
-        const endHeight = this.SITE_MEASURE_HEIGHT_PX - styleMarginTop;
-        const getBeat = (height) => {
-          // 다음과 같은 px로 딱 나누어 떨어진다면 해당 노트의 박자임
-          // xbit = 240px / x
-          // 4bit = 60px
-          // 8bit = 30px
-          // 12bit = 20px
-          // 16bit = 15px
-          // 20bit = 12px
-          // 24bit = 10px
-          // 32bit = 7.5px
-          // ...
-          const beat = this.SM_BEATS.find(beat => height % (this.SITE_MEASURE_HEIGHT_PX / beat) === 0);
-          if (beat === undefined) {
-            throw new Error(`Cannot extract beat in measure number ${number}`);
-          }
-
-          return beat;
-        }
-        const beat = getBeat(height);
-        const endBeat = getBeat(endHeight);
+        let endHeight = this.SITE_MEASURE_HEIGHT_PX - styleMarginTop;
+        endHeight = parseFloat(endHeight.toFixed(3));
+        const beat = this.getBeatByHeight(height);
+        const endBeat = this.getBeatByHeight(endHeight);
         
         let noteInfo = {
           // 일반 노트 class 예시: note note-2
@@ -432,6 +415,33 @@ const Ez2PatternParser = {
     };
 
     return metadata;
+  },
+
+  /**
+   * 노트의 높이에 해당하는 박자를 제공
+   * @param {number} height 
+   * @returns 
+   */
+  getBeatByHeight: function (height) {
+    // 다음과 같은 px로 딱 나누어 떨어진다면 해당 노트의 박자임
+    // xbit = 240px / x
+    // 4bit = 60px
+    // 8bit = 30px
+    // 12bit = 20px
+    // 16bit = 15px
+    // 20bit = 12px
+    // 24bit = 10px
+    // 32bit = 7.5px
+    // 48bit = 5px
+    // 64bit = 3.75px
+    // 96bit = 2.5px
+    // 192bit = 1.25px
+    const beat = this.SM_BEATS.find(beat => height % (this.SITE_MEASURE_HEIGHT_PX / beat) === 0);
+    if (!beat) {
+      throw new Error(`Cannot extract beat from height ${height}px.`);
+    }
+
+    return beat;
   }
 };
 
