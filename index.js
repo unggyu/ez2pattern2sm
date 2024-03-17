@@ -199,18 +199,23 @@ const Ez2PatternParser = {
       const rowStyleRegexp = /style="([^"]+)"/;
       const calcPxRegexp = /margin-top:calc\(((?:\d+\.)?\d+)+px(?:(?:.*?)height:calc\(((?:\d+\.)?\d+)px)?/;
       const number = parseInt(element.querySelector('div.bar-number').textContent);
+
+      // BPM 바 파싱
+      const bpmBarElements = [...element.querySelectorAll('div.bpm')];
+      const bpmBars = bpmBarElements.map(bpmBar => {
+        const style = bpmBar.outerHTML.match(rowStyleRegexp)[1];
+        const height = parseFloat(style.match(calcPxRegexp)[1]);
+        const spanElement = bpmBar.querySelector('span');
+        
+        return {
+          bpm: parseFloat(spanElement.textContent),
+          posFraction: (this.SITE_MEASURE_HEIGHT_PX - height) / this.SITE_MEASURE_HEIGHT_PX
+        }
+      });
+
       return {
         number,
-        bpmBars: [...element.querySelectorAll('div.bpm')].map(divElement => {
-          const style = divElement.outerHTML.match(rowStyleRegexp)[1];
-          const height = parseFloat(style.match(calcPxRegexp)[1]);
-          const spanElement = divElement.querySelector('span');
-          
-          return {
-            bpm: parseFloat(spanElement.textContent),
-            posFraction: (this.SITE_MEASURE_HEIGHT_PX - height) / this.SITE_MEASURE_HEIGHT_PX
-          }
-        }),
+        bpmBars,
         notes: Array.from(element.querySelectorAll('div.note')).map(({ outerHTML, className }) => {
           // style.marginTop이 undefined라서 outerHTML을 통해 style 원시값을 구하여 정규식으로 px값을 파싱
           const rowStyle = outerHTML.match(rowStyleRegexp)[1];
@@ -354,46 +359,43 @@ const SMWriter = {
    */
   write: function (metadata, measures) {
     const smMeasures = this.measures2SmMeasures(measures);
-    const bpmBars = this.getBpmBarsFromMeasures(measures);
+    const bpmBars = this.getBpmBarsFromMeasures(measures, metadata.minBpm);
     const smFilePath = this.getExportPath(metadata.title);
     const bgName = metadata.bgPath ? path.basename(metadata.bgPath) : undefined;
 
     // .sm 포멧으로 작성
     const wstream = fs.createWriteStream(smFilePath);
     wstream.write(`#TITLE:${metadata.title};
-  #SUBTITLE:;
-  #ARTIST:${metadata.artist};
-  #TITLETRANSLIT:;
-  #SUBTITLETRANSLIT:;
-  #ARTISTTRANSLIT:;
-  #GENRE:;
-  #CREDIT:;
-  #MUSIC:${metadata.title}.mp3;
-  #BANNER:${bgName ?? ''};
-  #BACKGROUND:${bgName ?? ''};
-  #CDTITLE:;
-  #SAMPLESTART:0.000;
-  #SAMPLELENGTH:0.000;
-  #SELECTABLE:YES;
-  #OFFSET:-0.0;\n`);
-    // ez2pattern 사이트는 아직 변속 BPM인 경우 시작 BPM을 알 수 없음
-    // 따라서 임시로 최소 BPM으로 시작하도록 함
-    // TODO: 사이트에서 시작 BPM 정보 제공 시 수정 필요
-    const bpmStr = [
-      `#BPMS:0.000=${metadata.minBpm.toFixed(3)}\n`,
-      ...bpmBars.map(({ bpmBarPos: bpmDegree, bpm }) => `${bpmDegree.toFixed(3)}=${bpm.toFixed(3)}\n`)
-    ].join() + ';\n';
+#SUBTITLE:;
+#ARTIST:${metadata.artist};
+#TITLETRANSLIT:;
+#SUBTITLETRANSLIT:;
+#ARTISTTRANSLIT:;
+#GENRE:;
+#CREDIT:;
+#MUSIC:${metadata.title}.mp3;
+#BANNER:${bgName ?? ''};
+#BACKGROUND:${bgName ?? ''};
+#CDTITLE:;
+#SAMPLESTART:0.000;
+#SAMPLELENGTH:0.000;
+#SELECTABLE:YES;
+#OFFSET:-0.0;\n`);
+    // BPM 바들을 작성
+    wstream.write('#BPMS:');
+    const bpmStr = bpmBars.map(({ bpmBarPos: bpmDegree, bpm }) =>
+      `${bpmDegree.toFixed(3)}=${bpm.toFixed(3)}\n`).join() + ';\n';
     wstream.write(bpmStr);
     wstream.write(`#STOPS:;
-  #BGCHANGES:;
-  #FGCHANGES:;
-  //--------------- dance-single - unknown ----------------
-  #NOTES:
-      dance-single:
-      unknown:
-      ${this.DJMAX2SM_DIFFICULTY_MAP[metadata.pattern]}:
-      ${metadata.star}:
-      0,0,0,0,0:\n`);
+#BGCHANGES:;
+#FGCHANGES:;
+//--------------- dance-single - unknown ----------------
+#NOTES:
+    dance-single:
+    unknown:
+    ${this.DJMAX2SM_DIFFICULTY_MAP[metadata.pattern]}:
+    ${metadata.star}:
+    0,0,0,0,0:\n`);
 
     smMeasures.forEach((measure, idx) => {
       measure.forEach(row => {
@@ -408,14 +410,26 @@ const SMWriter = {
 
   /**
    * 파싱된 마디 목록에서 BPM 바들을 가져옴
+   * @param {*} measures
+   * @param {number} startBpm
    */
-  getBpmBarsFromMeasures: function (measures) {
+  getBpmBarsFromMeasures: function (measures, startBpm = 0) {
     // 각 BPM 바의 위치를 계산하고 취합함
     // SM에선 4비트 박자를 기준으로 위치를 지정함
-    return measures.map(({ number, bpmBars }) => bpmBars.map(({ bpm, posFraction }) => ({
+    const bpmBars = measures.map(({ number, bpmBars }) => bpmBars.map(({ bpm, posFraction }) => ({
       bpmBarPos: 4 * ((number - 1) + posFraction),
       bpm,
     }))).flat();
+
+    if (bpmBars.length <= 0) {
+      // BPM 바가 없는 경우 metadata.minBpm으로 길이 1개짜리 배열을 만들어줌
+      bpmBars.push({
+        bpmBarPos: 0,
+        bpm: startBpm,
+      });
+    }
+
+    return bpmBars;
   },
 
   /**
