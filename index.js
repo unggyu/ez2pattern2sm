@@ -397,14 +397,19 @@ const SMWriter = {
     ${metadata.star}:
     0,0,0,0,0:\n`);
 
+    // 마디별 채보를 작성
+    wstream.write('   // Measure 0\n');
     smMeasures.forEach((measure, idx) => {
       measure.forEach(row => {
+        // 노트들을 작성
         row.forEach(col => wstream.write(col.toString()));
         wstream.write('\n');
       });
-      wstream.write(measure.length === idx + 1 ? ';\n' : ',\n');
+      // 마지막 마디가 아닌 경우엔 콤마로 마디를 구분하고 주석을 작성
+      // 마지막 마디인 경우엔 세미콜론으로 작성을 마무리함
+      wstream.write(smMeasures.length === idx + 1 ? ';' : `,  //  Measure ${idx + 1} \n`);
     });
-
+    wstream.write('\n');
     wstream.end();
   },
 
