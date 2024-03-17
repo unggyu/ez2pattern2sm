@@ -282,10 +282,10 @@ const Ez2PatternParser = {
           .slice(1)
           .map(match => {
             let px = parseFloat(match);
-            // 부동소수점 오차를 해결하기 위해 소수점 2자리까지 자름
-            // 222.50000000000003 -> 222.50
-            // 170.00000000000057 -> 170.00
-            px = parseFloat(px.toFixed(2));
+            // 부동소수점 오차를 해결하기 위해 소수점 3자리까지 자름
+            // 222.50000000000003 -> 222.500
+            // 170.00000000000057 -> 170.000
+            px = parseFloat(px.toFixed(3));
 
             return px;
           });
