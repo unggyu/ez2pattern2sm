@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -217,8 +217,17 @@ const Ez2PatternParser = {
    */
   parseAsync: async function (game, key, title, pattern) {
     const targetUrl = `https://ez2pattern.kro.kr/${game}/chart/${key}B/${title}/${pattern}`;
-    const resp = await axios.get(targetUrl);
-    const dom = new JSDOM(resp.data, { runScripts: 'dangerously' });
+    const virtualConsole = new VirtualConsole();
+    virtualConsole.on('error', (message) => {
+      if (!message.startsWith('Could not parse CSS')) {
+        console.error(message);
+      }
+    });
+    const response = await axios.get(targetUrl);
+    const dom = new JSDOM(response.data, {
+      runScripts: 'dangerously',
+      virtualConsole
+    });
     const document = dom.window.document;
 
     const metadata = {
