@@ -139,6 +139,8 @@ const SongDownloader = {
         console.error(`Failed to download from ${url}. Trying next one...`);
       }
     }
+
+    return downloadPath;
   },
 
   /**
@@ -655,7 +657,8 @@ const SMWriter = {
   // 음원 및 비디오 썸네일 다운로드
   console.log('Start downloading song and video thumbnail...');
   const videoId = await SongDownloader.downloadSongByTitleAsync(game, title);
-  await SongDownloader.downloadVideoThumbnailByVideoIdAsync(title, videoId);
+  const thumbnailPath = await SongDownloader.downloadVideoThumbnailByVideoIdAsync(title, videoId);
+  metadata.bgPath = thumbnailPath;
   console.log('Download completed.');
 
   // 평면 채보 파싱 및 SM 파일로 내보내기
