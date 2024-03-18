@@ -331,17 +331,51 @@ const Ez2PatternParser = {
 
         return noteInfo;
       });
-      
+
+      return {
+        number,
+        bpmBars,
+        notes
+      }
+    }).sort((a, b) => {
+      // 마디 번호가 칼럼별 내림차순이므로 전체 오름차순으로 정렬해준다.
+      return a.number - b.number;
+    });
+
+    measures.forEach((measure, idx) => {
+      if (idx !== 0) {
+        // 이전 마디의 마지막 노트의 위치가 1을 넘어가는 지뢰노트인 경우 이를 현재 마디로 이동시킴
+        const previousMeasure = measures[idx - 1];
+        const isOverflowedMineNotes = note => note.noteType === this.NOTE_TYPE.MINE && note.posFraction.start >= 1;
+        const overflowedMineNotes = previousMeasure.notes.filter(isOverflowedMineNotes);
+        if (overflowedMineNotes.length !== 0) {
+          const nonOverflowedMineNotes = previousMeasure.notes.filter(note => !isOverflowedMineNotes(note));
+          previousMeasure.notes = nonOverflowedMineNotes;
+          const editedMineNotes = overflowedMineNotes.map(note => {
+            note.posFraction.start = 0;
+            note.posFraction.end = 0;
+
+            return note;
+          });
+          measure.notes.push(...editedMineNotes);
+        }
+      }
+
       // 사이드 노트를 모두 가져온 후 노트 목록에서 사이드 노트를 제거
-      const sideNotes = notes.filter(note => note.noteType === this.NOTE_TYPE.SIDE);
-      notes = notes.filter(note => note.noteType !== this.NOTE_TYPE.SIDE);
+      const isSideNote = note => note.noteType === this.NOTE_TYPE.SIDE;
+      const sideNotes = measure.notes.filter(isSideNote);
+      if (sideNotes.length === 0) {
+        return;
+      }
+      const nonSideNotes = measure.notes.filter(note => !isSideNote(note));
+      measure.notes = nonSideNotes;
 
       // 사이드 노트를 32비트 지뢰 노트로 변환
       const sideNotesAsMines = sideNotes.map(sideNote => {
         const side2MinesBeat = 32;
         const lcmBeat = [sideNote.beat, sideNote.endBeat, side2MinesBeat].reduce(Utils.lcm.bind(Utils));
         const lcmFraction = 1 / lcmBeat;
-        const sideLength = Math.round((sideNote.posFraction.end - sideNote.posFraction.start) / lcmFraction);
+        const sideLength = Math.round((sideNote.posFraction.end - sideNote.posFraction.start) / lcmFraction) + 1;
         const mineNotePairs = Array.from({ length: sideLength }, (_, idx) => {
           const posFraction = sideNote.posFraction.start + (lcmFraction * idx);
           const noteLanes = this.SIDE_LANE_2_NOTE_LANE_MAP[sideNote.lane];
@@ -365,16 +399,7 @@ const Ez2PatternParser = {
         return mineNotes;
       });
       const mineNotes = sideNotesAsMines.flat();
-      notes.push(...mineNotes);
-
-      return {
-        number,
-        bpmBars,
-        notes
-      }
-    }).sort((a, b) => {
-      // 마디 번호가 칼럼별 내림차순이므로 전체 오름차순으로 정렬해준다.
-      return a.number - b.number;
+      measure.notes.push(...mineNotes);
     });
 
     const parseResult = {
