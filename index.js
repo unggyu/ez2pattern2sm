@@ -36,6 +36,7 @@ const Utils = {
    * @returns 
    */
   getExportFolderPath: function (title) {
+    title = this.sanitizeFilename(title);
     return path.join(__dirname, 'exports', title);
   },
 
@@ -49,6 +50,15 @@ const Utils = {
       // 내보낼 폴더가 없을 경우 생성해줌
       fs.mkdirSync(exportFolderPath, { recursive: true });
     }
+  },
+
+  /**
+   * 파일 또는 디렉토리 이름에 사용할 수 없는 특수 문자를 제거
+   * @param {string} filename
+   * @returns {string}
+   */
+  sanitizeFilename: function (filename) {
+    return filename.replace(/[<>:"\/\\|?*]+/g, '');
   },
 
   /**
@@ -80,25 +90,24 @@ const SongDownloader = {
    */
   downloadSongByTitleAsync: async function (game, title) {
     const downloadFolderPath = Utils.getExportFolderPath(title);
-    const audioFileName = `${title}.mp3`;
+    const audioFileName = `${Utils.sanitizeFilename(title)}.mp3`;
     const downloadPath = path.join(downloadFolderPath, audioFileName);
     if (fs.existsSync(downloadPath)) {
       throw new Error('Already exists song file: ', downloadPath);
     }
 
     const videoId = await this.getDjmaxVideoIdByTitleAsync(title);
-    await this.downloadSongByVideoIdAsync(title, videoId, downloadPath);
+    await this.downloadSongByVideoIdAsync(videoId, downloadPath);
 
     return videoId;
   },
 
   /**
    * 비디오 ID를 통해 음원 다운로드
-   * @param {string} title 
    * @param {string} videoId 
    * @param {string} downloadPath 
    */
-  downloadSongByVideoIdAsync: async function (title, videoId, downloadPath = '') {
+  downloadSongByVideoIdAsync: async function (videoId, downloadPath) {
     const videoUrl = `https://youtu.be/${videoId}`;
     const child = spawn('yt-dlp', ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', downloadPath, videoUrl]);
     await new Promise(resolve => child.on('close', code => resolve(code)));
@@ -129,7 +138,7 @@ const SongDownloader = {
       `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
     ];
     const downloadFolderPath = Utils.getExportFolderPath(title);
-    const downloadPath = path.join(downloadFolderPath, `${title}.jpg`);
+    const downloadPath = path.join(downloadFolderPath, `${Utils.sanitizeFilename(title)}.jpg`);
   
     for (let url of thumbnailUrls) {
       try {
@@ -528,7 +537,7 @@ const SMWriter = {
 #ARTISTTRANSLIT:;
 #GENRE:;
 #CREDIT:;
-#MUSIC:${metadata.title}.mp3;
+#MUSIC:${Utils.sanitizeFilename(metadata.title)}.mp3;
 #BANNER:${bgName ?? ''};
 #BACKGROUND:${bgName ?? ''};
 #CDTITLE:;
@@ -598,7 +607,9 @@ const SMWriter = {
    * @returns 
    */
   getExportPath: function (title) {
-    return path.join(Utils.getExportFolderPath(title), `${title}.sm`);
+    const folderPath = Utils.getExportFolderPath(title);
+    title = Utils.sanitizeFilename(title);
+    return path.join(folderPath, `${title}.sm`);
   },
 
   /**
