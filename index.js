@@ -322,12 +322,15 @@ const Ez2PatternParser = {
         endHeight = parseFloat(endHeight.toFixed(3));
         const beat = this.getBeatByHeight(height);
         const endBeat = this.getBeatByHeight(endHeight);
+
+        const laneStr = className.replace(/note|long|-/g, '').trim();
+        const lane = (laneStr === 'A' || laneStr === 'B') ? laneStr : parseInt(laneStr);
         
         let noteInfo = {
           // 일반 노트 class 예시: note note-2
           // 롱 노트 class 예시: note long note-1
           // 사이드 노트 class 예시: note long note-A
-          lane: className.replace(/note|long|-/g, '').trim(),
+          lane,
           noteType,
           beat,
           endBeat,
@@ -618,7 +621,6 @@ const SMWriter = {
    * @returns 
    */
   measures2SmMeasures: function (measures) {
-    let unfinishedLongNoteMeasureIdx = Number.MAX_VALUE;
     const smMeasures = measures.map(({ notes }, idx) => {
       if (notes.length <= 0) {
         // 빈 마디는 4*4 제로필해줌
@@ -633,25 +635,31 @@ const SMWriter = {
       // 최소공배수 * 4 제로필해주고 알맞은 위치에 노트를 채워넣음
       const twoDArray = this.createSmMeasure(lcmBeat);
       notes.forEach(({ noteType, posFraction, lane }) => {
-        lane = parseInt(lane) - 1;
+        lane = lane - 1;
         const row = Math.round(lcmBeat * posFraction.start);
         switch (noteType) {
           case this.INPUT_NOTE_TYPE.NOTE:
-            twoDArray[row][lane] = this.SM_NOTE.STEP
+            twoDArray[row][lane] = this.SM_NOTE.STEP;
             break;
           case this.INPUT_NOTE_TYPE.MINE:
             twoDArray[row][lane] = this.SM_NOTE.MINE;
             break;
-          default:
-            if (unfinishedLongNoteMeasureIdx !== idx - 1) {
-              // 아직 이전 마디의 롱노트가 끝나지도 않았는데 롱노트가 시작하는 것을 방지
-              twoDArray[row][lane] = this.SM_NOTE.HOLD_START;
-            }
+          case this.INPUT_NOTE_TYPE.LONG:
             const endRow = Math.round(lcmBeat * posFraction.end);
-            if (endRow < lcmBeat) {
+            if (posFraction.start === 0 && posFraction.end === 0) {
               twoDArray[endRow][lane] = this.SM_NOTE.HOLD_OR_ROLL_END;
             } else {
-              unfinishedLongNoteMeasureIdx = idx;
+              const previousMeasure = measures[idx - 1];
+              const isContinuousLongNote = previousMeasure.notes.some(note => 
+                note.noteType === this.INPUT_NOTE_TYPE.LONG &&
+                note.lane === lane + 1 &&
+                note.posFraction.end === 1);
+              if (!isContinuousLongNote) {
+                twoDArray[row][lane] = this.SM_NOTE.HOLD_START;
+              }
+              if (endRow < lcmBeat) {
+                twoDArray[endRow][lane] = this.SM_NOTE.HOLD_OR_ROLL_END;
+              }
             }
             break;
         }
