@@ -707,7 +707,7 @@ const SMWriter = {
   // 평면 채보 파싱 및 SM 파일로 내보내기
   console.log('Start parsing and exporting to SM file...');
   const { metadata, measures } = await Ez2PatternParser.parseAsync(game, key, title, pattern);
-  if (thumbnailPath) {
+  if (typeof thumbnailPath !== 'undefined') {
     metadata.bgPath = thumbnailPath;
   }
   SMWriter.write(metadata, measures);
