@@ -650,10 +650,11 @@ const SMWriter = {
               twoDArray[endRow][lane] = this.SM_NOTE.HOLD_OR_ROLL_END;
             } else {
               const previousMeasure = measures[idx - 1];
-              const isContinuousLongNote = previousMeasure.notes.some(note => 
-                note.noteType === this.INPUT_NOTE_TYPE.LONG &&
-                note.lane === lane + 1 &&
-                note.posFraction.end === 1);
+              const isContinuousLongNote = posFraction.start === 0 &&
+                previousMeasure.notes.some(note => 
+                  note.noteType === this.INPUT_NOTE_TYPE.LONG &&
+                  note.lane === lane + 1 &&
+                  note.posFraction.end === 1);
               if (!isContinuousLongNote) {
                 twoDArray[row][lane] = this.SM_NOTE.HOLD_START;
               }
