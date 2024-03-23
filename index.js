@@ -642,6 +642,10 @@ const SMWriter = {
             twoDArray[row][lane] = this.SM_NOTE.STEP;
             break;
           case this.INPUT_NOTE_TYPE.MINE:
+            if ([this.SM_NOTE.HOLD_START, this.SM_NOTE.HOLD_OR_ROLL_END].includes(twoDArray[row][lane])) {
+              // 롱노트의 시작점이거나 끝점인 경우 지뢰노트를 놓지않음
+              break;
+            }
             twoDArray[row][lane] = this.SM_NOTE.MINE;
             break;
           case this.INPUT_NOTE_TYPE.LONG:
